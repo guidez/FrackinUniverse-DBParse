@@ -4,22 +4,6 @@ $keywordLookup = "circuitboard"
 
 $fuPath = "F:\Steam\steamapps\common\Starbound\mods\FrackinUniverse"
 
-$fuWikiProps = @{
-                'itemName'="";
-                'fullName'="";
-                'rarity'="";
-                'category'="";
-                'price'="";
-                'wbLearnFrom'="";
-                'itemsLearned'=@();
-                'usedFor'=@();
-                'recipeItemName'=@();
-                'recipeItemCount'=@();
-                }
-
-$fuWikiDB = New-Object -TypeName PSObject –Prop $fuWikiProps
-#Write-Output $object
-
 function PullData($tmpFilePath, $tmpFileExt, $tmpFileBaseName){
     
     $fileJSON = Get-Content -Path $tmpFilePath | ConvertFrom-Json
