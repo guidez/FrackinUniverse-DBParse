@@ -1,8 +1,7 @@
 ﻿$ErrorActionPreference = "Continue"
 
-$keywordLookup = "circuitboard"
-
 $fuPath = "F:\Steam\steamapps\common\Starbound\mods\FrackinUniverse"
+
 
 $fuWikiProps = @{
                 'itemName'="Item Name";
@@ -13,196 +12,184 @@ $fuWikiProps = @{
                 'itemsLearned'=@();
                 'recipeItemName'=@();
                 'recipeItemCount'=@();
-                'learnFrom'="Not Learned";
+                'learnFrom'=@();
                 'usedFor'=@();
                 }
 
-$fuWikiDB = @()
+$errorPathArray = @()
+
+#Uncomment this for first time run, or account for it in host window first
+#$fuWikiDB = @()
 $fuWikiOBJ = New-Object -TypeName PSObject –Prop $fuWikiProps
 $fuWikiDB += $fuWikiOBJ
-
-#This function just for reference from PullCraftingMaterialInfo script, will go away
-function PullData($tmpFilePath, $tmpFileExt, $tmpFileBaseName){
-    
-    $fileJSON = Get-Content -Path $tmpFilePath | ConvertFrom-Json
-
-    #Learned From section
-    if ($tmpFileExt -like '.patch' -and $fileJSON.path -like '/learnBlueprintsOnPickup'){
-        Write-Output "$keywordLookup is learned from: $fileBaseName"
-        Write-Output ""
-    }
-    elseif ($fileJSON.learnBlueprintsOnPickup -contains $keywordLookup){
-        Write-Output "$keywordLookup is learned from: $fileBaseName"
-        Write-Output ""
-    }
-
-    #Crafting Recipe section 1 - How to craft
-    elseif ("$($tmpFileBaseName)$($tmpFileExt)" -like "$keywordLookup.recipe"){
-        Write-Output "Recipe:"
-        foreach ($inputVal in $fileJSON.input){
-            Write-Output "$($inputVal.item)x$($inputVal.count)"
-        }
-        Write-Output ""
-    }
-
-    #Crafting Recipe section 2 - Used in crafting for
-    elseif ("$($tmpFileExt)" -like ".recipe"){
-        Write-Output "Used in crafting for: $($fileJSON.output[0].item)"
-    }
-
-    #HowToLearn Section
-    elseif ($($fileJSON.upgradeStages.interactData.initialRecipeUnlocks) -contains $keywordLookup){
-        foreach($interactData in $fileJSON.upgradeStages.interactData){
-            
-            if ($($interactData.initialRecipeUnlocks) -contains $keywordLookup){
-                Write-Output "Learned from: $($interactData.filter[0])"
-            }
-
-        }
-    }
-
-    #Create Basic information
-    else{
-        if($fileJSON.itemName -notlike ''){
-            $tmpItemID = $fileJSON.itemName
-        }
-        elseif ($fileJSON.objectName -notlike ''){
-            $tmpItemID = $fileJSON.objectName
-        }
-
-        if($tmpItemID -like $keywordLookup){
-            $tmpNameCheck = $fileJSON.shortdescription -match '\;(.*)\^'
-    
-            if($tmpNameCheck -eq $false){
-                $tmpNameCheck = $fileJSON.shortdescription -match '\;(.*)'
-            }
-
-            if($tmpNameCheck){
-                $tmpItemName = $Matches[1]
-            }
-            else{
-                $tmpItemName = $fileJSON.shortdescription
-            }
-
-            Write-Output "Player Friendly Name: $tmpItemName"
-            Write-Output "Rarity: $($fileJSON.rarity)"
-            Write-Output "Category: $($fileJSON.category)"
-            Write-Output "Price: $($fileJSON.price)"
-            Write-Output "Icon: $($fileJSON.inventoryIcon)"
-            Write-Output "Spawn Item Name: $tmpItemID"
-            Write-Output ""
-            Write-Output "Items Learned on Pickup:"
-            foreach ($bp in $($fileJSON.learnBlueprintsOnPickup)){
-                Write-Output "$bp"
-            }
-            Write-Output ""
-            
-        }
-        
-    }
-}
 
 # -Exclude *.lua, *.ps1, *.csv, *.png, *.ogg, *.wav, *.txt, *.damage, *.frames, *.animation, *.activeitem, *.activeitem.patch, *.weather, *.treasurepools, *.npctype | 
 $allFiles = Get-ChildItem -Path $fuPath\* -recurse -Include *.object, *.item |
                                 Where-Object { $_.Attributes -ne "Directory"}
-
-$count = 1;
 $allCount = $allFiles.Count
 $lastCheck = ""
 
-function ConstructNewObjectEntry ($tmpFileJSON, $tmpItemName){
-
-    $fuWikiOBJ.itemName = $itemName
-    $fuWikiOBJ.rarity   = $tmpFileJSON.rarity
-    $fuWikiOBJ.category = $tmpFileJSON.category
-    $fuWikiOBJ.price    = $tmpFileJSON.price
-
-    $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)\^'
-
-    if($tmpNameCheck -eq $false){
-        $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)'
+function ConstructDBEntry ($tmpFileJSON, $tmpName){
+    
+    #Check if item already exists
+    $dbEntryIndex = -1
+    for ($x = 0; $x -lt $fuWikiDB.Count; $x++){
+        if ($fuWikiDB[$x].itemName -like $tmpName){
+            $dbEntryIndex = $x;
+            break
+        }
     }
 
-    if($tmpNameCheck){
-        $fuWikiOBJ.fullName = $Matches[1]
+    #region Item Exists
+    if ($dbEntryIndex -ge 0){
+        Write-Host "Updating existing entry: $($fuWikiDB[$x].itemName)"
+        if ($tmpFileJSON.rarity -notlike ""){
+            $fuWikiDB[$x].rarity = $tmpFileJSON.rarity
+        }
+
+        if ($tmpFileJSON.category -notlike ""){
+            $fuWikiDB[$x].category = $tmpFileJSON.category
+        }
+
+        if ($tmpFileJSON.price -notlike ""){
+            $fuWikiDB[$x].price = $tmpFileJSON.price
+        }
+
+        if ($tmpFileJSON.shortdescription -notlike ""){
+            $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)\^'
+
+            if($tmpNameCheck -eq $false){
+                $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)'
+            }
+
+            if($tmpNameCheck){
+                $fuWikiDB[$x].fullName = $Matches[1]
+            }
+            else{
+                $fuWikiDB[$x].fullName = $tmpFileJSON.shortdescription
+            }
+        }
+
+        for ($y = 0; $y -lt $tmpFileJSON.learnBlueprintsOnPickup.Count; $y++){
+            if ($fuWikiDB[$x].itemsLearned -notcontains $tmpFileJSON.learnBlueprintsOnPickup[$y]){
+                $fuWikiDB[$x].itemsLearned += $tmpFileJSON.learnBlueprintsOnPickup[$y]
+            }
+        }
+
+        for ($y = 0; $y -lt $tmpFileJSON.upgradeStages.interactData.Count; $y++){
+            if ($fuWikiDB[$x].itemsLearned -notcontains $tmpFileJSON.upgradeStages.interactData.initialRecipeUnlocks[$y]){
+                $fuWikiDB[$x].itemsLearned += $tmpFileJSON.upgradeStages.interactData.initialRecipeUnlocks[$y]
+            }
+        }
     }
+    #endregion
+
+    #region Item Doesn't exist
     else{
-        $fuWikiOBJ.fullName = $fileJSON.shortdescription
-    }
+        Write-Host "Creating new entry: $tmpName"
+        $fuWikiOBJ.itemName = $tmpName
+        $fuWikiOBJ.rarity   = $tmpFileJSON.rarity
+        $fuWikiOBJ.category = $tmpFileJSON.category
+        $fuWikiOBJ.price    = $tmpFileJSON.price
 
-    foreach ($bp in $tmpFileJSON.learnBlueprintsOnPickup){
-        if ($fuWikiOBJ.itemsLearned -notcontains $bp){
-            $fuWikiOBJ.itemsLearned += $bp
-        }  
-    }
+        #Regex section for removing the coloring codes from the full name of an object
+        $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)\^'
 
-    foreach($interactData in $fileJSON.upgradeStages.interactData){
-        if ($fuWikiOBJ.itemsLearned -notcontains $interactData.initialRecipeUnlocks){
-            $fuWikiOBJ.itemsLearned += $interactData.initialRecipeUnlocks
-        }  
-    }
+        if($tmpNameCheck -eq $false){
+            $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)'
+        }
 
-    $fuWikiOBJ
+        if($tmpNameCheck){
+            $fuWikiOBJ.fullName = $Matches[1]
+        }
+        else{
+            $fuWikiOBJ.fullName = $tmpFileJSON.shortdescription
+        }
+        #--End regex section
+
+        foreach ($bp in $tmpFileJSON.learnBlueprintsOnPickup){
+            if ($fuWikiOBJ.itemsLearned -notcontains $bp){
+                $fuWikiOBJ.itemsLearned += $bp
+            }  
+        }
+
+        foreach($interactData in $tmpFileJSON.upgradeStages.interactData){
+            if ($fuWikiOBJ.itemsLearned -notcontains $interactData.initialRecipeUnlocks){
+                $fuWikiOBJ.itemsLearned += $interactData.initialRecipeUnlocks
+            }  
+        }
+
+        #Script: part modifies the db/array variable outside of the function
+        $script:fuWikiDB += $fuWikiOBJ
+    }
+    #endregion
 }
-
-function UpdateExistingObjectEntry (){
-
-}
-
-$count = 1
 
 foreach($file in $allFiles){
     
+    #Clear any previous errors
+    $error.clear()
+
     $fuWikiOBJ = New-Object -TypeName PSObject –Prop $fuWikiProps
 
     $filePath = $file.FullName
     $fileBaseName = $file.BaseName
-    $fileName = $file.Name
     $fileExt = $file.Extension
 
-    $fileJSON = Get-Content -Path $filePath -raw | ConvertFrom-Json
-
-    Switch ($fileExt){
-
-        ".object" {
-            $itemName = $fileJSON.objectName
-            $itemDBIndex = $fuWikiDB.itemName.IndexOf($itemName)
-
-            if($itemDBIndex -gt -1){
-                $fuWikiDB[$itemDBIndex] = ConstructNewObjectEntry $fileJSON $itemName
-            }
-            else{
-                $fuWikiDB += ConstructNewObjectEntry $fileJSON $itemName
-            }
-        }
-
-        ".item" {
-            $itemName = $fileJSON.itemName
-            $itemDBIndex = $fuWikiDB.itemName.IndexOf($itemName)
-
-            if($itemDBIndex -gt -1){
-                #Write-Host "Got here $itemName"
-                #Already exists, add .object related stuffs here
-            }
-            else{
-                $fuWikiDB += ConstructNewObjectEntry $fileJSON $itemName
-            }
-        }
-
-        ".recipe" {
-            
-        }
-
-        ".patch" {
-            
-        }
-
-        default {
-            "Unsupported File Extension"
-        }
+    try {
+        $fileJSON = Get-Content -Path $filePath -raw | ConvertFrom-Json
     }
+    catch{
+        Write-Host "Could not convert $($file.Name) to JSON! Check path array."
+        $errorPathArray += $filePath
+    }
+
+    #If no error from try/catch occurred, let's parse
+    if(!$error){
+        Switch ($fileExt){
+
+            ".object" {
+                ConstructDBEntry $fileJSON $fileJSON.objectName
+            }
+
+            ".item" {
+                ConstructDBEntry $fileJSON $fileJSON.itemName
+            }
+
+            ".recipe" {
+            
+            }
+
+            ".patch" {
+                if ($fileJSON.path -like '/learnBlueprintsOnPickup'){
+
+                }
+            }
+
+            default {
+                Write-Host "Unsupported File Extension"
+            }
+        }
+    }  
 }
 
 $fuWikiOBJ = ""
 
-$fuWikiDB
+for ($x = 0; $x -lt $fuWikiDB.Count; $x++){
+
+    $currentItem = $fuWikiDB[$x].itemName
+
+    for ($y = 0; $y -lt $fuWikiDB.Count; $y++){
+
+     $itemIndex = $fuWikiDB[$y].itemsLearned.IndexOf($currentItem)
+
+        if ($itemIndex -ge 0 -and $fuWikiDB[$x].learnFrom -notcontains $fuWikiDB[$y].fullName){
+            
+            $fuWikiDB[$x].learnFrom += $fuWikiDB[$y].fullName
+
+        }
+    }
+    
+}
+
+$fuWikiDB 
