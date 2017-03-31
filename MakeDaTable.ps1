@@ -56,7 +56,6 @@ function ArrayOutString($tmpFileContents, $valType){
     }
 
     $stringBP
-
 }
 
 function GenDescription($tmpFileContents){

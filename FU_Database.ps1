@@ -1,26 +1,26 @@
 ﻿#Next steps:
-# Recipes: Do in a different loop so val's can be filled in correct order
-# Need to also account for workbench upgrades
-
+# PATCH FILES1!!!!1!!
 
 $ErrorActionPreference = "Continue"
 
 $fuPath = "F:\Steam\steamapps\common\Starbound\mods\FrackinUniverse"
 
-
 $fuWikiProps = @{
-                'itemName'="Item Name";
-                'fullName'="Full Name";
-                'rarity'="No Rarity";
-                'category'="No Category";
-                'price'="No Price";
-                'itemsLearned'=@();
-                'recipeItemName'=@();
-                'recipeItemCount'=@();
-                'learnFrom'=@();
-                'usedFor'=@();
-                'craftedAt'=@();
-                'upgradesFrom'=@()
+                'itemName'="Item Name"
+                'fullName'="Full Name"
+                'rarity'="No Rarity"
+                'category'="No Category"
+                'price'="No Price"
+                'upgradesFrom'=""
+                'upgradesTo'=""
+                'upgradeItemCostName'=@()
+                'upgradeItemCostCount'=@()
+                'itemsLearned'=@()
+                'recipeItemName'=@()
+                'recipeItemCount'=@()
+                'learnFrom'=@()
+                'usedFor'=@()
+                'craftedAt'=@()
                 }
 
 $errorPathArray = @()
@@ -58,66 +58,55 @@ function CleanOutComments ($tmpFile){
 }
 
 function ConstructDBEntry ($tmpFileJSON, $tmpName){
-    
-    #Check if item already exists
-    $dbEntryIndex = -1
-    for ($x = 0; $x -lt $fuWikiDB.Count; $x++){
-        if ($fuWikiDB[$x].itemName -like $tmpName){
-            $dbEntryIndex = $x;
-            break
-        }
-    }
 
-    #region Item Exists
-    if ($dbEntryIndex -ge 0){
-        Write-Host "Having to update file $tmpName"
-        if ($tmpFileJSON.rarity -notlike ""){
-            $fuWikiDB[$x].rarity = $tmpFileJSON.rarity
-        }
+    $fuWikiOBJ.category = $tmpFileJSON.category
 
-        if ($tmpFileJSON.category -notlike ""){
-            $fuWikiDB[$x].category = $tmpFileJSON.category
-        }
+    if ($fuWikiOBJ.category -like "crafting"){
+        for ($x = 0; $x -lt $tmpFileJSON.upgradeStages.Count; $x++){
+            $fuWikiOBJWB = New-Object -TypeName PSObject –Prop $fuWikiProps
 
-        if ($tmpFileJSON.price -notlike ""){
-            $fuWikiDB[$x].price = $tmpFileJSON.price
-        }
+            $fuWikiOBJWB.itemName = $tmpFileJSON.upgradeStages[$x].interactData.filter[$x]
+            $fuWikiOBJWB.fullName = ($tmpFileJSON.upgradeStages[$x].interactData.paneLayoutOverride.windowTitle.title).trim()
+            $fuWikiOBJWB.rarity = $tmpFileJSON.rarity
+            $fuWikiOBJWB.category = $tmpFileJSON.category
 
-        if ($tmpFileJSON.shortdescription -notlike ""){
-            $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)\^'
-
-            if($tmpNameCheck -eq $false){
-                $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)'
-            }
-
-            if($tmpNameCheck){
-                $fuWikiDB[$x].fullName = $Matches[1]
+            if ($x -eq 0){
+                $fuWikiOBJWB.price = $tmpFileJSON.price
             }
             else{
-                $fuWikiDB[$x].fullName = $tmpFileJSON.shortdescription
+                $fuWikiOBJWB.price = $tmpFileJSON.upgradeStages[$x].itemSpawnParameters.price
+                $fuWikiOBJWB.upgradesFrom = ($tmpFileJSON.upgradeStages[($x-1)].interactData.paneLayoutOverride.windowTitle.title).trim()
             }
-        }
+            
+            if ($x -lt $tmpFileJSON.upgradeStages.Count-1){
+                $fuWikiOBJWB.upgradesTo = ($tmpFileJSON.upgradeStages[($x+1)].interactData.paneLayoutOverride.windowTitle.title).trim()
+            }
 
-        for ($y = 0; $y -lt $tmpFileJSON.learnBlueprintsOnPickup.Count; $y++){
-            if ($fuWikiDB[$x].itemsLearned -notcontains $tmpFileJSON.learnBlueprintsOnPickup[$y]){
-                $fuWikiDB[$x].itemsLearned += $tmpFileJSON.learnBlueprintsOnPickup[$y]
+            foreach ($tmpInput in $tmpFileJSON.upgradeStages[$x].interactData.upgradeMaterials){
+                $fuWikiOBJWB.upgradeItemCostName += $tmpInput.item
+                $fuWikiOBJWB.upgradeItemCostCount += $tmpInput.count
             }
-        }
 
-        for ($y = 0; $y -lt $tmpFileJSON.upgradeStages.interactData.Count; $y++){
-            if ($fuWikiDB[$x].itemsLearned -notcontains $tmpFileJSON.upgradeStages.interactData.initialRecipeUnlocks[$y]){
-                $fuWikiDB[$x].itemsLearned += $tmpFileJSON.upgradeStages.interactData.initialRecipeUnlocks[$y]
+            foreach($initialRecipe in $tmpFileJSON.upgradeStages[$x].interactData.initialRecipeUnlocks){
+                if ($fuWikiOBJWB.itemsLearned -notcontains $initialRecipe){
+                    $fuWikiOBJWB.itemsLearned += $initialRecipe
+                }
             }
+
+            foreach($learnedBP in $tmpFileJSON.upgradeStages[$x].learnBlueprintsOnPickup){
+                
+                if ($fuWikiOBJWB.itemsLearned -notcontains $learnedBP){
+                    $fuWikiOBJWB.itemsLearned += $learnedBP
+                }
+            }
+            
+            $script:fuWikiDB += $fuWikiOBJWB
         }
     }
-    #endregion
-
-    #region Item Doesn't exist
     else{
         $fuWikiOBJ.itemName = $tmpName
-        $fuWikiOBJ.rarity   = $tmpFileJSON.rarity
-        $fuWikiOBJ.category = $tmpFileJSON.category
-        $fuWikiOBJ.price    = $tmpFileJSON.price
+        $fuWikiOBJ.rarity = $tmpFileJSON.rarity
+        $fuWikiOBJ.price = $tmpFileJSON.price
 
         #Regex section for removing the coloring codes from the full name of an object
         $tmpNameCheck = $tmpFileJSON.shortdescription -match '\;(.*)\^'
@@ -140,16 +129,16 @@ function ConstructDBEntry ($tmpFileJSON, $tmpName){
             }  
         }
 
-        foreach($interactData in $tmpFileJSON.upgradeStages.interactData){
-            if ($fuWikiOBJ.itemsLearned -notcontains $interactData.initialRecipeUnlocks){
-                $fuWikiOBJ.itemsLearned += $interactData.initialRecipeUnlocks
+        foreach($initialRecipe in $tmpFileJSON.upgradeStages.interactData){
+            if ($fuWikiOBJ.itemsLearned -notcontains $initialRecipe){
+                $fuWikiOBJ.itemsLearned += $initialRecipe
             }
         }
 
         #Script: part modifies the db/array variable outside of the function
         $script:fuWikiDB += $fuWikiOBJ
     }
-    #endregion
+
 }
 
 function ConstructDBRecipeEntry ($tmpFileJSON, $tmpRecipeName){
@@ -194,13 +183,16 @@ function ExportDBToCSV ($tmpDB){
                         rarity,
                         category,
                         price,
-                        @{Name="items Learned";Expression={ArrayOutString $_.itemsLearned}},
-                        @{Name="recipe ItemName";Expression={ArrayOutString $_.recipeItemName}},
-                        @{Name="recipe ItemCount";Expression={ArrayOutString $_.recipeItemCount}},
-                        @{Name="learn From";Expression={ArrayOutString $_.learnFrom}},
-                        @{Name="used For";Expression={ArrayOutString $_.usedFor}},
-                        @{Name="crafted At";Expression={ArrayOutString $_.craftedAt}},
-                        @{Name="upgrades From";Expression={ArrayOutString $_.upgradesFrom}} | export-csv -Path ".\Export.Csv" -NoTypeInformation
+                        upgradesFrom,
+                        upgradesTo,
+                        @{Name="upgradeItemCostName";Expression={ArrayOutString $_.upgradeItemCostName}},
+                        @{Name="upgradeItemCostCount";Expression={ArrayOutString $_.upgradeItemCostCount}},
+                        @{Name="itemsLearned";Expression={ArrayOutString $_.itemsLearned}},
+                        @{Name="recipeItemName";Expression={ArrayOutString $_.recipeItemName}},
+                        @{Name="recipeItemCount";Expression={ArrayOutString $_.recipeItemCount}},
+                        @{Name="learnFrom";Expression={ArrayOutString $_.learnFrom}},
+                        @{Name="usedFor";Expression={ArrayOutString $_.usedFor}},
+                        @{Name="craftedAt";Expression={ArrayOutString $_.craftedAt}} | export-csv -Path ".\Export.Csv" -NoTypeInformation
 }
 
 Write-Host "Parsing OBJ/Items..."
