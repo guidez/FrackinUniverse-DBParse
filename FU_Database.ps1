@@ -1,4 +1,9 @@
-﻿$ErrorActionPreference = "Continue"
+﻿#Next steps:
+# Recipes: Do in a different loop so val's can be filled in correct order
+# Need to also account for workbench upgrades
+
+
+$ErrorActionPreference = "Continue"
 
 $fuPath = "F:\Steam\steamapps\common\Starbound\mods\FrackinUniverse"
 
@@ -14,20 +19,43 @@ $fuWikiProps = @{
                 'recipeItemCount'=@();
                 'learnFrom'=@();
                 'usedFor'=@();
+                'craftedAt'=@();
+                'upgradesFrom'=@()
                 }
 
 $errorPathArray = @()
 
 #Uncomment this for first time run, or account for it in host window first
-#$fuWikiDB = @()
+$fuWikiDB = @()
 $fuWikiOBJ = New-Object -TypeName PSObject –Prop $fuWikiProps
 $fuWikiDB += $fuWikiOBJ
 
-# -Exclude *.lua, *.ps1, *.csv, *.png, *.ogg, *.wav, *.txt, *.damage, *.frames, *.animation, *.activeitem, *.activeitem.patch, *.weather, *.treasurepools, *.npctype | 
-$allFiles = Get-ChildItem -Path $fuPath\* -recurse -Include *.object, *.item |
-                                Where-Object { $_.Attributes -ne "Directory"}
-$allCount = $allFiles.Count
-$lastCheck = ""
+function CleanOutComments ($tmpFile){
+
+    $starterJSON = "[`n";
+    $reader = [System.IO.File]::OpenText($tmpFile.FullName)
+    try {
+        for() {
+            $line = $reader.ReadLine()
+            if ($line -eq $null) { break }
+            $starterJSON += "  " + $line + "`n"
+        }
+    }
+    finally {
+        $reader.Close()
+    }
+
+    $starterJSON += "`n]"
+
+    $blockRegex = "/\*[^*]*\*+(?:[^*/][^*]*\*+)*/";
+    $lineRegex = "(/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)|(//.*)"
+
+    $starterJSON = $starterJSON -replace $blockRegex;
+    $starterJSON = $starterJSON -replace $lineRegex;
+
+    $starterJSON
+
+}
 
 function ConstructDBEntry ($tmpFileJSON, $tmpName){
     
@@ -42,7 +70,7 @@ function ConstructDBEntry ($tmpFileJSON, $tmpName){
 
     #region Item Exists
     if ($dbEntryIndex -ge 0){
-        Write-Host "Updating existing entry: $($fuWikiDB[$x].itemName)"
+        Write-Host "Having to update file $tmpName"
         if ($tmpFileJSON.rarity -notlike ""){
             $fuWikiDB[$x].rarity = $tmpFileJSON.rarity
         }
@@ -86,7 +114,6 @@ function ConstructDBEntry ($tmpFileJSON, $tmpName){
 
     #region Item Doesn't exist
     else{
-        Write-Host "Creating new entry: $tmpName"
         $fuWikiOBJ.itemName = $tmpName
         $fuWikiOBJ.rarity   = $tmpFileJSON.rarity
         $fuWikiOBJ.category = $tmpFileJSON.category
@@ -116,7 +143,7 @@ function ConstructDBEntry ($tmpFileJSON, $tmpName){
         foreach($interactData in $tmpFileJSON.upgradeStages.interactData){
             if ($fuWikiOBJ.itemsLearned -notcontains $interactData.initialRecipeUnlocks){
                 $fuWikiOBJ.itemsLearned += $interactData.initialRecipeUnlocks
-            }  
+            }
         }
 
         #Script: part modifies the db/array variable outside of the function
@@ -125,8 +152,67 @@ function ConstructDBEntry ($tmpFileJSON, $tmpName){
     #endregion
 }
 
+function ConstructDBRecipeEntry ($tmpFileJSON, $tmpRecipeName){
+    
+    for ($x = 0; $x -lt $fuWikiDB.Count; $x++){
+        
+        if ($fuWikiDB[$x].itemName -eq $tmpRecipeName -or $fuWikiDB[$x].itemName -like "$tmpRecipeName*"){
+            
+            foreach ($tmpInput in $tmpFileJSON.input){
+                $fuWikiDB[$x].recipeItemName += $tmpInput.item
+                $fuWikiDB[$x].recipeItemCount += $tmpInput.count
+            }
+
+            $fuWikiDB[$x].craftedAt = $tmpFileJSON.groups
+
+            break
+        }
+    }
+
+}
+
+function ArrayOutString($tmpArray){
+
+    $returnString = "."
+
+    foreach($thing in $tmpArray){
+        if ($returnString -eq "."){
+            $returnString = "$thing"
+        }
+        else{
+            $returnString = $returnString + "| $thing"
+        }
+        
+    }
+
+    $returnString
+}
+
+function ExportDBToCSV ($tmpDB){
+    $tmpDB | Select  itemName,
+                        fullName,
+                        rarity,
+                        category,
+                        price,
+                        @{Name="items Learned";Expression={ArrayOutString $_.itemsLearned}},
+                        @{Name="recipe ItemName";Expression={ArrayOutString $_.recipeItemName}},
+                        @{Name="recipe ItemCount";Expression={ArrayOutString $_.recipeItemCount}},
+                        @{Name="learn From";Expression={ArrayOutString $_.learnFrom}},
+                        @{Name="used For";Expression={ArrayOutString $_.usedFor}},
+                        @{Name="crafted At";Expression={ArrayOutString $_.craftedAt}},
+                        @{Name="upgrades From";Expression={ArrayOutString $_.upgradesFrom}} | export-csv -Path ".\Export.Csv" -NoTypeInformation
+}
+
+Write-Host "Parsing OBJ/Items..."
+#region Get Object files and Item files
+$allFiles = Get-ChildItem -Path $fuPath\* -recurse -Include *.object, *.item | Where-Object { $_.Attributes -ne "Directory"}
+$allCount = $allFiles.Count
+$currCount = 1
+
 foreach($file in $allFiles){
     
+    #Write-Host "Parsing file $currCount of $($allFiles.Count)"
+
     #Clear any previous errors
     $error.clear()
 
@@ -137,7 +223,9 @@ foreach($file in $allFiles){
     $fileExt = $file.Extension
 
     try {
-        $fileJSON = Get-Content -Path $filePath -raw | ConvertFrom-Json
+        $cleanedFile = CleanOutComments $file
+        
+        $fileJSON = $cleanedFile | ConvertFrom-Json
     }
     catch{
         Write-Host "Could not convert $($file.Name) to JSON! Check path array."
@@ -156,40 +244,78 @@ foreach($file in $allFiles){
                 ConstructDBEntry $fileJSON $fileJSON.itemName
             }
 
-            ".recipe" {
-            
-            }
-
-            ".patch" {
-                if ($fileJSON.path -like '/learnBlueprintsOnPickup'){
-
-                }
-            }
-
             default {
                 Write-Host "Unsupported File Extension"
             }
         }
-    }  
+    }
+
+    $currCount++
 }
+#endregion
+
+Write-Host "Parsing Recipes..."
+#region Get Recipe files
+$allFiles = Get-ChildItem -Path $fuPath\* -recurse -Include *.recipe | Where-Object { $_.Attributes -ne "Directory"}
+$allCount = $allFiles.Count
+$currCount = 1
+
+foreach($file in $allFiles){
+
+    #Clear any previous errors
+    $error.clear()
+
+    $fuWikiOBJ = New-Object -TypeName PSObject –Prop $fuWikiProps
+
+    $filePath = $file.FullName
+    $fileBaseName = $file.BaseName
+    $fileExt = $file.Extension
+
+    try {
+        $cleanedFile = CleanOutComments $file
+        
+        $fileJSON = $cleanedFile | ConvertFrom-Json
+    }
+    catch{
+        Write-Host "Could not convert recipe $($file.Name) to JSON! Check path array."
+        $errorPathArray += $filePath
+    }
+
+    if(!$error){
+        ConstructDBRecipeEntry $fileJSON $fileBaseName
+    }
+    
+    $currCount++
+}
+#endregion
 
 $fuWikiOBJ = ""
 
+Write-Host "Correlating Item Names to Full Names..."
 for ($x = 0; $x -lt $fuWikiDB.Count; $x++){
+    
+    #Write-Host "Clarifying $x of $($fuWikiDB.Count - 1)"
 
     $currentItem = $fuWikiDB[$x].itemName
+    $currentItemFullName = $fuWikiDB[$x].fullName
 
     for ($y = 0; $y -lt $fuWikiDB.Count; $y++){
 
-     $itemIndex = $fuWikiDB[$y].itemsLearned.IndexOf($currentItem)
+        $itemIndex = $fuWikiDB[$y].itemsLearned.IndexOf($currentItem)
 
         if ($itemIndex -ge 0 -and $fuWikiDB[$x].learnFrom -notcontains $fuWikiDB[$y].fullName){
             
             $fuWikiDB[$x].learnFrom += $fuWikiDB[$y].fullName
 
         }
+
+        $itemIndex = $fuWikiDB[$y].recipeItemName.IndexOf($currentItem)
+
+        if ($itemIndex -ge 0){
+            $fuWikiDB[$y].recipeItemName[$itemIndex] = $currentItemFullName
+        }
     }
-    
 }
 
-$fuWikiDB 
+Write-Host "Writing to CSV file..."
+ExportDBToCSV $fuWikiDB
