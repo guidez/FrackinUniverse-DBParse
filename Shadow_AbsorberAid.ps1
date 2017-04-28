@@ -1,6 +1,9 @@
 ﻿#Change this to your FU mod directory
 $fuPath = "F:\Steam\steamapps\common\Starbound\mods\FrackinUniverse"
 
+#Change this to the path value you want to filter on
+$filterValue = "/builderConfig/0/elementalType/-"
+
 #region Functions have to go first... Sigh Powershell
 function CleanOutComments ($tmpFile){
 
@@ -53,8 +56,8 @@ foreach ($file in $allPatchFiles){
 
     foreach ($changeThingy in $fileJSON[0]){
 
-        if($changeThingy.path -like "/builderConfig/0/elementalType/-"){
-            Write-Host "Oh no! $($file.name) doesn't have any elemental type!"
+        if($changeThingy.path -like $filterValue){
+            Write-Host "$($file.name) doesn't have $filterValue"
             break
         }
 
