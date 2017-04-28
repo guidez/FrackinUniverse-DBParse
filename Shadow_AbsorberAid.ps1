@@ -28,24 +28,6 @@ function CleanOutComments ($tmpFile){
     $starterJSON
 
 }
-
-function ArrayOutString($tmpArray){
-
-    $returnString = "null"
-
-    foreach($thing in $tmpArray){
-        if ($returnString -eq "null"){
-            $returnString = "$thing"
-        }
-        else{
-            $returnString = $returnString + " | $thing"
-        }
-        
-    }
-
-    $returnString
-}
-
 #endregion
 
 $getFiles = Read-Host "Get patch files? Type Yes or No"
@@ -54,13 +36,6 @@ while("yes","no" -notcontains $getFiles)
 {
 	$getFiles = Read-Host "Get patch files? Type Yes or No"
 }
-
-$fuObjectProperties = [ordered]@{
-                        'fileName'=""
-                        'data'=@()
-                        }
-
-$parsedData = @()
 
 if ($getFiles -like "yes"){
     Write-Host "Getting Patch files..."
@@ -72,28 +47,17 @@ $count = 0
 Write-Host "Parsing Patch files"
 foreach ($file in $allPatchFiles){
 
-    $fuDataItem = New-Object -TypeName PSObject –Prop $fuObjectProperties
-
     $cleanedFile = CleanOutComments $file
 
     $fileJSON = $cleanedFile | ConvertFrom-Json
 
-    $fuDataItem.fileName = $file.Name
-    $fuDataItem.data = @($fileJSON)
+    foreach ($changeThingy in $fileJSON[0]){
 
-    $parsedData += $fuDataItem
-
-}
-
-$consolidatedInfo = foreach ($item in $parsedData){
-
-
-    foreach ($changeThingy in $item.data[0]){
         if($changeThingy.path -like "/builderConfig/0/elementalType/-"){
-            Write-Host "Oh no! $($item.fileName) doesn't have any elemental type!"
+            Write-Host "Oh no! $($file.name) doesn't have any elemental type!"
             break
         }
-    }
 
+    }
 
 }
